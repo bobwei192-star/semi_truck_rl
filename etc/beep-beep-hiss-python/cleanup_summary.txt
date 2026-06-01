@@ -1,0 +1,91 @@
+=== beep-beep-hiss-python 目录清理总结 ===
+
+清理时间: 2025/12/18
+清理目标: 删除无用文件和测试文件
+
+=== 已删除的文件 ===
+
+1. 测试文件 (test_*.py):
+   - test_35_degree_steering.py
+   - test_90_degree_limit.py
+   - test_antialiasing.py
+   - test_articulation_angle.py
+   - test_articulation_fix.py
+   - test_border_colors.py
+   - test_brown_red_color.py
+   - test_conversion.py
+   - test_final_visualization.py
+   - test_manual_integration.py
+   - test_one_frame.py
+   - test_steering_detailed.py
+   - test_steering.py
+   - test_visualization_fix.py
+   - test_visualization.py
+
+2. 重复/备份文件:
+   - manual_test copy.py
+   - manual_test copy 2.py
+
+3. 分析文件:
+   - compare_truck_models.py (三个项目比较分析)
+   - rl_parking_recommendation.py (强化学习推荐分析)
+
+4. 其他文件:
+   - simple_validation.py
+
+5. 缓存目录:
+   - 所有子目录中的 __pycache__ 目录
+
+=== 保留的文件 ===
+
+1. 核心文件:
+   - manual_test.py (主测试文件，已优化)
+   - requirements.txt (依赖文件)
+
+2. 代码目录:
+   - control/ (控制算法)
+   - mapping/ (地图相关)
+   - planning/ (路径规划)
+   - scripts/ (脚本)
+   - semi_truck_model/ (半挂车模型)
+   - simulation/ (仿真)
+   - utils/ (工具函数)
+   - vehicle/ (车辆模型)
+
+3. 脚本文件:
+   - scripts/simple_test.py (简单测试脚本)
+
+=== 清理效果 ===
+
+1. 文件数量减少: 从 20+ 个文件减少到核心文件
+2. 目录结构更清晰: 只保留必要的代码和测试文件
+3. 存储空间优化: 删除临时测试文件和缓存
+4. 维护性提高: 减少混乱，便于代码管理
+
+=== 注意事项 ===
+
+1. manual_test.py 已优化:
+   - 车头: 红色边框 (4像素，抗锯齿)
+   - 挂车: 棕红色边框 (4像素，抗锯齿)
+   - 轮子位置: 已修正 (基于MATLAB版本)
+   - 背景: 纯白色，无网格线
+   - 抗锯齿: 已优化，减少锯齿
+
+2. 所有核心功能保持不变:
+   - 车辆模型
+   - 控制算法
+   - 仿真功能
+   - 可视化
+
+=== 运行说明 ===
+
+运行主测试文件:
+python manual_test.py
+
+运行简单测试:
+python scripts/simple_test.py
+
+安装依赖:
+pip install -r requirements.txt
+
+清理完成！
