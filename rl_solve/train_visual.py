@@ -12,12 +12,12 @@ import pygame
 # 添加项目根目录到路径
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import truck_parking_env
-from scene_config import (
+import env.truck_parking_env
+from config.scene_config import (
     GOAL_X, GOAL_Y, START_X, START_Y, LANE_WIDTH,
     MAX_STEPS, TRAIN_TOTAL_STEPS,
 )
-from utils import RewardPlotCallback
+from rl_solve.utils import RewardPlotCallback
 
 from stable_baselines3 import DDPG
 from stable_baselines3.her.her_replay_buffer import HerReplayBuffer

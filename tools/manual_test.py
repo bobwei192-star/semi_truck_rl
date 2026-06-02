@@ -4,16 +4,17 @@ import sys
 import os
 import time
 
-sys.path.append(os.path.dirname(__file__))
+# 添加项目根目录到路径
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from truckTrailerOnAxle import TruckTrailerOnAxle
-from dual_lane_road import DualLaneRoad
-from scene_config import (
+from vehicle.truckTrailerOnAxle import TruckTrailerOnAxle
+from map.dual_lane_road import DualLaneRoad
+from config.scene_config import (
     SCALE, LEFT_LANE_WIDTH, RIGHT_LANE_WIDTH, START_HEADING_OFFSET_RAD, START_G_INIT_RAD,
     START_X, START_Y,
     INIT_HEADING_RAD, HEADING_NOISE_RAD, INIT_G_RAD, G_NOISE_RAD,
 )
-from render_utils import (
+from render.render_utils import (
     WHITE, BLACK, RED, GREEN,
     draw_truck as _draw_truck_fn,
     draw_trajectory as _draw_trajectory_fn,

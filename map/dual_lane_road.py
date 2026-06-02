@@ -1,12 +1,16 @@
 import pygame
+import sys
+import os
 from typing import List, Tuple, Optional
-from geometry_line import GeometryLine
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from map.geometry_line import GeometryLine
+from config.scene_config import GOAL_X, GOAL_Y, LEFT_LANE_WIDTH, RIGHT_LANE_WIDTH, SCALE, PARKING_LINE_Y, PARKING_TOP_Y, PARKING_BTM_Y
 
 YELLOW = (255, 215, 0)
 DARK_YELLOW = (204, 153, 0)
 ROAD_GRAY = (160, 160, 160)
-
-from scene_config import GOAL_X, GOAL_Y, LEFT_LANE_WIDTH, RIGHT_LANE_WIDTH, SCALE, PARKING_LINE_Y, PARKING_TOP_Y, PARKING_BTM_Y
 
 
 class DualLaneRoad:

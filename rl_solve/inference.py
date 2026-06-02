@@ -10,7 +10,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from stable_baselines3 import DDPG
 import gymnasium as gym
 
-import truck_parking_env
+import env.truck_parking_env
 
 
 def _find_best_model(ckpt_dir):

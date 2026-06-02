@@ -12,9 +12,9 @@ from stable_baselines3.common.callbacks import CheckpointCallback
 from stable_baselines3.common.vec_env import DummyVecEnv
 import gymnasium as gym
 
-import truck_parking_env
-from utils import RewardPlotCallback, CurriculumCallback
-from scene_config import (
+import env.truck_parking_env
+from rl_solve.utils import RewardPlotCallback, CurriculumCallback
+from config.scene_config import (
     GOAL_X, GOAL_Y, START_X, START_Y, LANE_WIDTH,
     MAX_STEPS, TRAIN_TOTAL_STEPS, CURRICULUM_STAGES,
 )

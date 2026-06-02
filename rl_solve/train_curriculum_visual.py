@@ -11,8 +11,8 @@ import pygame
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import truck_parking_env
-from scene_config import (
+import env.truck_parking_env
+from config.scene_config import (
     GOAL_X, GOAL_Y, START_X, START_Y, LANE_WIDTH,
     MAX_STEPS, TRAIN_TOTAL_STEPS, CURRICULUM_STAGES,
 )

@@ -13,8 +13,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from stable_baselines3 import DDPG
 import gymnasium as gym
 
-import truck_parking_env
-from scene_config import CURRICULUM_STAGES, GOAL_X, GOAL_Y
+import env.truck_parking_env
+from config.scene_config import CURRICULUM_STAGES, GOAL_X, GOAL_Y
 
 
 def test_model(model_path=None, curriculum_stage=4, num_episodes=5):

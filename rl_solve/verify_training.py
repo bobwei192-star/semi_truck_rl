@@ -17,7 +17,7 @@ import gymnasium as gym
 # 1. 验证环境注册
 print("=" * 60)
 print("[1/8] 验证 Gymnasium 环境注册...")
-import truck_parking_env
+import env.truck_parking_env
 try:
     env = gym.make('TruckParking-v0', curriculum_stage=0)
     print("  ✓ 环境 'TruckParking-v0' 注册成功")
