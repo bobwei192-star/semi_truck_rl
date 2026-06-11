@@ -218,3 +218,8 @@ __marimo__/
 .streamlit/secrets.toml
 
 venv
+
+# Project specific
+logs/
+*.zip
+rl_ckpt/

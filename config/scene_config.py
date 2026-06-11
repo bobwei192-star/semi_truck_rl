@@ -16,34 +16,24 @@ LEFT_LANE_WIDTH = 6.0      # 左车道宽度（米）：1001 到 1003 的距离
 RIGHT_LANE_WIDTH = 4.0     # 右车道宽度（米）：1003 到 1002 的距离
 LANE_WIDTH = 8.0           # 兼容旧接口，= LEFT_LANE_WIDTH + RIGHT_LANE_WIDTH
 
-# # 目标位置（倒车入库终点）
-# GOAL_X = 57.5             # 目标点 X 坐标（米），靠左以避免碰撞
-# GOAL_Y = 53.62             # 目标点 Y 坐标（米）
-# GOAL_HEADING_TOL_DEG = 10.0   # 目标航向角容差（度）
-# GOAL_G_TOL_DEG = 5.0          # 目标铰接角容差（度）
-# GOAL_POS_TOL_M = 0.5          # 目标位置容差（米）
 
-# # 起点位置（每次 reset 时在此基础上加随机扰动）
-# START_X = 57.5                   # 起点 X 坐标（米），与 GOAL_X 一致
-# START_Y = 9.91                # 起点 Y 坐标（米）
 
 
 
 
 
 # 起点位置（倒车起点，每次 reset 时在此基础上加随机扰动）
-START_X = 58.25              # 起点 X 坐标（米）
+START_X = 56.25              # 起点 X 坐标（米）
 START_Y = 9.91               # 起点 Y 坐标（米）
+#起点朝向 也在这里规定 为 -90°
+STARTSTART_HEADING_RAD = -np.pi / 2   # 起点航向角（弧度），-90° 朝上（朝向屏幕上方，y轴负方向）
 
 # 目标位置（倒车入库终点 - 库位中心）
 GOAL_X = 58.25               # 目标点 X 坐标（米）
-GOAL_Y = 50.56               # 目标点 Y 坐标（米）
+GOAL_Y = 53.56               # 目标点 Y 坐标（米）
 GOAL_HEADING_TOL_DEG = 10.0  # 目标航向角容差（度）
 GOAL_G_TOL_DEG = 5.0         # 目标铰接角容差（度）
 GOAL_POS_TOL_M = 0.5         # 目标位置容差（米）
-
-
-
 
 # 初始朝向配置（车头朝上 = -90°）
 INIT_HEADING_RAD = -np.pi / 2   # 初始车头朝向（弧度），-90° 朝上（朝向屏幕上方，y轴负方向）

@@ -10,7 +10,7 @@ import pygame
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import gymnasium as gym
-import truck_parking_env
+import env.truck_parking_env
 from adp_solve.adp_controller import ADPController
 from scene_config import (
     SCALE, GOAL_X, GOAL_Y, START_X, START_Y,

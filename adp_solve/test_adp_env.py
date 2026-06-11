@@ -9,7 +9,7 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import gymnasium as gym
-import truck_parking_env
+import env.truck_parking_env
 from adp_solve.adp_controller import ADPController
 
 

@@ -89,3 +89,85 @@ def init_pygame_screen(fullscreen=False, caption='Truck Parking'):
                                           pygame.HWSURFACE | pygame.DOUBLEBUF)
     pygame.display.set_caption(caption)
     return screen, width, height
+
+
+def draw_corner_numbers(surface, truck, scale, offset_x=0, offset_y=0):
+    """在车辆8个角外侧绘制编号（无背景方块，数字与角点有偏移）
+
+    编号规则：
+    牵引车头4个角（编号1-4）:
+    1 - 车头右前角
+    2 - 车头右后角
+    3 - 车头左后角
+    4 - 车头左前角
+
+    挂车4个角（编号5-8）:
+    5 - 挂车右前角（靠近车头）
+    6 - 挂车右后角
+    7 - 挂车左后角
+    8 - 挂车左前角（靠近车头）
+    """
+    # 获取8个角的位置
+    corners = truck.get_corner_positions()
+
+    # 设置字体
+    font = pygame.font.Font(None, 28)
+
+    # 偏移量（像素）：数字与角点之间的距离
+    offset_px = 18
+
+    for i, (cx, cy) in enumerate(corners):
+        # 转换为像素坐标
+        px = cx * scale + offset_x
+        py = cy * scale + offset_y
+
+        corner_num = i + 1
+
+        # 根据编号设置颜色
+        if corner_num <= 4:
+            text_color = (255, 0, 0)      # 车头角：红色
+        else:
+            text_color = (165, 42, 42)    # 挂车角：棕色
+
+        # 渲染数字文本（带黑色描边增强可见性）
+        text_surface = font.render(str(corner_num), True, text_color)
+        text_w, text_h = text_surface.get_size()
+
+        # 确定偏移方向：数字放在角点外侧
+        # 车头角（1-4）：根据车头朝向计算外侧
+        # 挂车角（5-8）：根据挂车朝向计算外侧
+        if corner_num <= 4:
+            # 车头角的外侧方向
+            if corner_num == 1:      # 右前 -> 右上方
+                dx, dy = 1, -1
+            elif corner_num == 2:    # 右后 -> 右下方
+                dx, dy = 1, 1
+            elif corner_num == 3:    # 左后 -> 左下方
+                dx, dy = -1, 1
+            else:                    # 左前 -> 左上方
+                dx, dy = -1, -1
+        else:
+            # 挂车角的外侧方向
+            if corner_num == 5:      # 右前 -> 右上方
+                dx, dy = 1, -1
+            elif corner_num == 6:    # 右后 -> 右下方
+                dx, dy = 1, 1
+            elif corner_num == 7:    # 左后 -> 左下方
+                dx, dy = -1, 1
+            else:                    # 左前 -> 左上方
+                dx, dy = -1, -1
+
+        # 计算数字位置（带偏移）
+        text_x = int(px + dx * offset_px - text_w / 2)
+        text_y = int(py + dy * offset_px - text_h / 2)
+
+        # 绘制黑色描边（增强可见性）
+        for ox, oy in [(-1, -1), (-1, 1), (1, -1), (1, 1), (0, -1), (0, 1), (-1, 0), (1, 0)]:
+            outline_surface = font.render(str(corner_num), True, (0, 0, 0))
+            surface.blit(outline_surface, (text_x + ox, text_y + oy))
+
+        # 绘制数字
+        surface.blit(text_surface, (text_x, text_y))
+
+        # 绘制角点标记（小圆点）
+        pygame.draw.circle(surface, (0, 0, 0), (int(px), int(py)), 3)
