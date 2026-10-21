@@ -1,0 +1,12 @@
+{
+  "steps": 867,
+  "success": true,
+  "violations": 0,
+  "tc_end": [
+    58.005,
+    58.658
+  ],
+  "g_end_deg": -0.003,
+  "max_lateral_err": 0.572,
+  "corner_margin": 0.158
+}
