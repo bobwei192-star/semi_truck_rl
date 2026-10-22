@@ -3,10 +3,10 @@
   "success": true,
   "violations": 0,
   "tc_end": [
-    58.005,
-    58.658
+    58.003,
+    58.659
   ],
-  "g_end_deg": -0.003,
-  "max_lateral_err": 0.572,
+  "g_end_deg": -0.004,
+  "max_lateral_err": 0.584,
   "corner_margin": 0.158
 }

@@ -33,7 +33,7 @@ from another_solve.path_planner import PathPlanner
 
 MAX_STEPS = 2500
 V_REVERSE = -1.0            # 倒车速度 m/s
-STEER_RATE = MAX_STEERING_RATE * DT   # 每步转向增量上限 (3°/步)
+STEER_RATE = np.deg2rad(MAX_STEERING_RATE) * DT   # 每步转向增量上限 (rad/步, 3°/步)
 TRAILER_LEN = 11.0          # 挂车轴距, 挂车后轴中心 = 铰点后方 L/2
 
 NOISE_STD = 1.0             # 实际轨迹的转向噪声 (度/步)
@@ -116,15 +116,11 @@ class ParkingController:
 
     def __init__(self, path, k_psi=6.0, k_lateral=0.01, k_steer=6.0, g_des_max_deg=5.0):
         self.path = path
-        self.prev_swa = 0.0
         # 增益
         self.k_psi = k_psi              # 挂车航向误差 -> 目标铰接角 (rad/rad)
         self.k_lateral = k_lateral      # 横向误差 -> 目标铰接角 (rad/m)
         self.k_steer = k_steer          # 铰接角误差 -> 转向角 (rad/rad)
         self.g_des_max = np.deg2rad(g_des_max_deg)
-
-    def reset(self):
-        self.prev_swa = 0.0
 
     def trailer_center(self, truck):
         """挂车后轴中心: 铰点(牵引车参考点)沿挂车朝向 h+g 反方向 Lt/2 处"""
@@ -151,12 +147,7 @@ class ParkingController:
             swa = -np.deg2rad(35)
         elif truck.g_rad < -np.deg2rad(40):
             swa = np.deg2rad(35)
-        swa = np.clip(swa, -np.deg2rad(35), np.deg2rad(35))
-
-        # 转向速率限制
-        swa = np.clip(swa, self.prev_swa - STEER_RATE, self.prev_swa + STEER_RATE)
-        self.prev_swa = swa
-        return np.rad2deg(swa), e, psi
+        return np.rad2deg(swa), e, psi    # 原始指令, 速率限制在执行层统一做
 
 
 def run_once(path, noise_std=0.0, seed=0, **ckwargs):
@@ -170,6 +161,7 @@ def run_once(path, noise_std=0.0, seed=0, **ckwargs):
 
     controller = ParkingController(path, **ckwargs)
     tc_goal_y = GOAL_Y + TRAILER_LEN / 2 - 0.45          # 与 plan_path 的 tc_goal 一致
+    prev_applied = 0.0                                   # 执行器上一拍实际转角 (度)
 
     states = []       # 每步 (x, y, h, g, s_deg)
     tc_states = []    # 每步挂车后轴中心
@@ -180,7 +172,12 @@ def run_once(path, noise_std=0.0, seed=0, **ckwargs):
         swa_deg, e, psi = controller.compute(truck)
         if noise_std:
             swa_deg += rng.normal(0, noise_std)
-            swa_deg = float(np.clip(swa_deg, -35, 35))
+        # 执行器统一限幅: 幅值 ±35°, 速率 ±STEER_RATE (度/步, 指令和噪声都受限)
+        swa_deg = float(np.clip(swa_deg, -35, 35))
+        swa_deg = float(np.clip(swa_deg,
+                                prev_applied - np.rad2deg(STEER_RATE),
+                                prev_applied + np.rad2deg(STEER_RATE)))
+        prev_applied = swa_deg
         truck.set_steering(swa_deg)
         truck.drive(DT)
 
