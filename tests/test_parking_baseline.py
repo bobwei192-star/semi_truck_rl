@@ -79,7 +79,7 @@ def run_test():
         for msg in failures:
             print("  -", msg)
         return 1
-    print(f"\n[PASS] 与基线 parking-baseline-v1 一致, 带噪运行成功")
+    print(f"\n[PASS] 与基线 parking-baseline-v2 一致, 带噪运行成功")
     return 0
 
 
