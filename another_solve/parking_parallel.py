@@ -25,7 +25,7 @@ from map.geometry_line import GeometryLine
 from another_solve.parking_three_lines import (
     ParkingController, x_plan_at, local_psi_ref,
     draw_dotted, draw_solid, load_font, compute_camera,
-    truck_from_state, screen_to_world, point_on_truck,
+    truck_from_state, screen_to_world, point_on_truck, draw_help,
     PLAN_COLOR, CTRL_COLOR, ACTUAL_COLOR,
     MAX_STEPS, V_REVERSE, NOISE_STD, ACTUAL_SEED, STEER_RATE, corners_in_slot,
 )
@@ -226,18 +226,17 @@ def render_frame(screen, runs, idx, road, font_small, font_big, override=None, c
                     (14, view_h - 24 - (len(lines) - 1 - i) * 26))
 
     # 操作提示 (右上角)
-    hint = font_small.render("拖拽车辆 | L 拉直 | 空格 回放 | R 重置", True, (130, 130, 130))
-    screen.blit(hint, (view_w - hint.get_width() - 14, 12))
+    draw_help(screen, font_small, view_w, view_h)
 
     if manual:
         surf = font_small.render("手动位姿 (空格继续回放 / R 重置)", True, (70, 90, 170))
-        screen.blit(surf, (view_w // 2 - surf.get_width() // 2, 104))
+        screen.blit(surf, (view_w // 2 - surf.get_width() // 2, 120))
     elif done:
         status = "侧方位入库成功" if runs['actual']['success'] else "未成功停入"
         color = (0, 150, 60) if runs['actual']['success'] else (
             (190, 130, 0) if not cur_bad else (220, 40, 40))
         surf = font_big.render(status, True, color)
-        screen.blit(surf, (view_w // 2 - surf.get_width() // 2, 104))
+        screen.blit(surf, (view_w // 2 - surf.get_width() // 2, 120))
 
 
 def ensure_display():

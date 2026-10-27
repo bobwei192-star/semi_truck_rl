@@ -291,6 +291,28 @@ def point_on_truck(truck, wx, wy):
                    tr_len / 2 + 0.3, truck.trailerWidth / 2 + 0.3)
 
 
+HELP_LINES = (
+    "鼠标左键拖拽车辆 | L 拉直挂车",
+    "空格 暂停/继续 | R 重置",
+    "UP/DOWN 倍速 | ESC 退出",
+)
+
+
+def draw_help(screen, font_small, view_w, view_h):
+    """右上角常驻快捷键说明 (浅底框, 保证文字不被场景标线干扰)"""
+    surfs = [font_small.render(t, True, (60, 60, 60)) for t in HELP_LINES]
+    pad, lh = 10, 26
+    w = max(s.get_width() for s in surfs) + 2 * pad
+    h = lh * len(surfs) + 2 * pad
+    x, y = view_w - w - 14, 10
+    box = pygame.Surface((w, h), pygame.SRCALPHA)
+    box.fill((255, 255, 255, 250))
+    pygame.draw.rect(box, (185, 185, 185), box.get_rect(), 1)
+    screen.blit(box, (x, y))
+    for i, surf in enumerate(surfs):
+        screen.blit(surf, (x + pad, y + pad + i * lh))
+
+
 WORLD_W_PX = int(80 * SCALE)    # 世界画布: x 0..80m
 WORLD_H_PX = int(80 * SCALE)    # y 0..80m
 
@@ -374,18 +396,17 @@ def render_frame(screen, runs, idx, road, font_small, font_big, override=None, c
         screen.blit(surf, (14, view_h - 24 - (len(lines) - 1 - i) * 26))
 
     # 操作提示 (右上角)
-    hint = font_small.render("拖拽车辆 | L 拉直 | 空格 回放 | R 重置", True, (130, 130, 130))
-    screen.blit(hint, (view_w - hint.get_width() - 14, 12))
+    draw_help(screen, font_small, view_w, view_h)
 
     if manual:
         surf = font_small.render("手动位姿 (空格继续回放 / R 重置)", True, (70, 90, 170))
-        screen.blit(surf, (view_w // 2 - surf.get_width() // 2, 104))
+        screen.blit(surf, (view_w // 2 - surf.get_width() // 2, 120))
     elif done:
         status = "入库成功" if runs['actual']['success'] else "未成功停入"
         color = (0, 150, 60) if runs['actual']['success'] else (
             (190, 130, 0) if not cur_bad else (220, 40, 40))
         surf = font_big.render(status, True, color)
-        screen.blit(surf, (view_w // 2 - surf.get_width() // 2, 104))
+        screen.blit(surf, (view_w // 2 - surf.get_width() // 2, 120))
 
 
 def ensure_display():
