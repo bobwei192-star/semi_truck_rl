@@ -39,6 +39,12 @@ DOCK_X = (SLOT_P_LEFT + SLOT_P_RIGHT) / 2     # 52.0
 TC_GOAL_Y = 54.5                              # 挂车后轴中心目标 y (车尾留 0.5m)
 JOIN_Y = TC_GOAL_Y                            # S 曲线直接延伸到停车位 (拉长过渡段降峰值铰接角)
 
+HELP_LINES_SIDE = (
+    "鼠标左键拖拽车辆 | L 拉直挂车",
+    "空格 暂停/继续 | R 重置",
+    "UP/DOWN 倍速 | ESC 退出",
+)
+
 
 def smoothstep(s):
     return s * s * s * (10 - 15 * s + 6 * s * s)
@@ -226,7 +232,7 @@ def render_frame(screen, runs, idx, road, font_small, font_big, override=None, c
                     (14, view_h - 24 - (len(lines) - 1 - i) * 26))
 
     # 操作提示 (右上角)
-    draw_help(screen, font_small, view_w, view_h)
+    draw_help(screen, font_small, view_w, view_h, HELP_LINES_SIDE)
 
     if manual:
         surf = font_small.render("手动位姿 (空格继续回放 / R 重置)", True, (70, 90, 170))

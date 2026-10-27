@@ -12,7 +12,7 @@
   .venv/bin/python another_solve/parking_three_lines.py --headless # 无头验证 + 保存截图
 
 按键: SPACE 暂停/继续 | R 重置 | UP/DOWN 倍速 | L 拉直挂车 | ESC 退出
-交互: 鼠标左键拖拽车辆移动位置 (拖拽/拉直后停在当前位姿, 空格继续回放)
+交互: 鼠标左键拖拽车辆移动位置; 拖拽/拉直后按 SPACE 从当前位姿重新规划并倒车
 """
 
 import os
@@ -39,6 +39,9 @@ TRAILER_LEN = 11.0          # 挂车轴距, 挂车后轴中心 = 铰点后方 L/
 
 NOISE_STD = 1.0             # 实际轨迹的转向噪声 (度/步)
 ACTUAL_SEED = 2
+REPLAN_G_DES_MAX_DEG = 15.0  # 拖拽起点重规划时放宽的目标铰接角上限 (度)
+REPLAN_JOIN_GAP = 5.5        # 拖拽起点 S 曲线摆直点距库口线的默认距离 (米)
+REPLAN_JOIN_GAPS = (3.0, 5.5, 7.0, 8.5)  # 重规划时依次尝试的摆直点
 
 # 库位约束 (线 1003=左 x=56, 1002=右 x=60, 1014=入口 y=50.5, 1015=底 y=69)
 SLOT_LEFT = ROAD_CENTER_X
@@ -74,22 +77,46 @@ CTRL_COLOR = (204, 153, 0)      # 黄 (加深以适配白色背景)
 ACTUAL_COLOR = (80, 150, 255)   # 蓝
 
 
-def plan_path():
+def plan_path(start_state=None, join_gap=REPLAN_JOIN_GAP):
     """规划线: 挂车后轴中心两段路径 (盯尾不盯头)
 
-    段1 斜线接近: 从起点横向平移到库位 x 上方 (库口线前留直行段)
-    段2 垂直入库: 与库位 1003/1002 平行直倒 (挂车摆直后直着进库)
+    默认起点: 斜线接近 + 垂直入库 (保持基线不变)
+    拖拽起点: 三次 Hermite S 曲线, 起终点切向竖直/沿当前挂车朝向,
+              平滑过渡后再垂直入库.
+
+    start_state: 拖拽后位姿 (x, y, h, g, s); None 表示默认起点
+    join_gap: 摆直点距库口线的距离 (米), 默认起点固定 5.5m
     """
-    tc_start = np.array([START_X, START_Y + TRAILER_LEN / 2])
     dock_x = (SLOT_LEFT + SLOT_RIGHT) / 2      # 对准库位中心, 左右边距对称
     tc_goal = np.array([dock_x, GOAL_Y + TRAILER_LEN / 2 - 0.45])  # 留出车尾余量
-    join_y = SLOT_TOP - 5.5                     # 库口线前 5.5m 摆直
+
+    if start_state is None:
+        tc_start = np.array([START_X, START_Y + TRAILER_LEN / 2])
+        join_y = SLOT_TOP - 5.5                 # 库口线前 5.5m 摆直
+        join = np.array([dock_x, join_y])
+        seg1 = np.linspace(tc_start, join, 140, endpoint=False)
+        return np.vstack([seg1, np.linspace(join, tc_goal, 80)])
+
+    th = start_state[2] + start_state[3]
+    tc_start = np.array([start_state[0] - TRAILER_LEN / 2 * np.cos(th),
+                         start_state[1] - TRAILER_LEN / 2 * np.sin(th)])
+    join_y = SLOT_TOP - join_gap
     join = np.array([dock_x, join_y])
 
-    n1, n2 = 140, 80
-    seg1 = np.linspace(tc_start, join, n1, endpoint=False)
-    seg2 = np.linspace(join, tc_goal, n2)
-    return np.vstack([seg1, seg2])
+    dy = join_y - tc_start[1]
+    if dy > 2.0:
+        # 起始切向 = 当前倒车方向; 终点切向竖直 (dx/dy = 0)
+        m0 = float(np.clip(np.cos(th) / np.sin(th), -0.6, 0.6)) if abs(np.sin(th)) > 0.3 else 0.0
+        n1 = max(40, int(round(dy / 0.212)))
+        t = np.linspace(0.0, 1.0, n1, endpoint=False)
+        h00 = 2 * t**3 - 3 * t**2 + 1
+        h10 = t**3 - 2 * t**2 + t
+        h01 = -2 * t**3 + 3 * t**2
+        xs = h00 * tc_start[0] + h10 * dy * m0 + h01 * dock_x
+        seg1 = np.stack([xs, tc_start[1] + t * dy], axis=1)
+    else:
+        seg1 = np.empty((0, 2))                 # 起点已到库口附近, 直接垂直段
+    return np.vstack([seg1, np.linspace(join, tc_goal, 80)])
 
 
 def local_psi_ref(path, y):
@@ -151,18 +178,28 @@ class ParkingController:
         return np.rad2deg(swa), e, psi    # 原始指令, 速率限制在执行层统一做
 
 
-def run_once(path, noise_std=0.0, seed=0, **ckwargs):
-    """跑一次倒车入库. noise_std>0 时加入初始扰动与转向噪声 (实际轨迹)"""
+def run_once(path, noise_std=0.0, seed=0, start_state=None, **ckwargs):
+    """跑一次倒车入库. noise_std>0 时加入初始扰动与转向噪声 (实际轨迹)
+
+    start_state=(x, y, h, g, s_deg) 时从该位姿直接起步 (拖拽后重新倒车),
+    否则从默认起点并在 noise_std>0 时叠加初始扰动.
+    """
     rng = np.random.default_rng(seed)
     truck = TruckTrailerOnAxle()
-    x0 = START_X + rng.normal(0, 0.15) if noise_std else START_X
-    h0 = INIT_HEADING_RAD + rng.normal(0, np.deg2rad(0.5)) if noise_std else INIT_HEADING_RAD
-    truck.set_state([x0, START_Y, h0, 0.0])
+    if start_state is not None:
+        s0 = float(start_state[4]) if len(start_state) > 4 else 0.0
+        truck.set_state(start_state[:4])
+        truck.s_deg = s0
+    else:
+        x0 = START_X + rng.normal(0, 0.15) if noise_std else START_X
+        h0 = INIT_HEADING_RAD + rng.normal(0, np.deg2rad(0.5)) if noise_std else INIT_HEADING_RAD
+        truck.set_state([x0, START_Y, h0, 0.0])
+        s0 = 0.0
     truck.v_mps = V_REVERSE
 
     controller = ParkingController(path, **ckwargs)
     tc_goal_y = GOAL_Y + TRAILER_LEN / 2 - 0.45          # 与 plan_path 的 tc_goal 一致
-    prev_applied = 0.0                                   # 执行器上一拍实际转角 (度)
+    prev_applied = s0                                    # 执行器上一拍实际转角 (度)
 
     states = []       # 每步 (x, y, h, g, s_deg)
     tc_states = []    # 每步挂车后轴中心
@@ -209,11 +246,31 @@ def run_once(path, noise_std=0.0, seed=0, **ckwargs):
     }
 
 
-def load_runs():
-    """离线计算 规划线 / 控制线(理想) / 实际轨迹(带噪) — 均为挂车后轴中心轨迹"""
-    path = plan_path()
-    ideal = run_once(path, noise_std=0.0)
-    actual = run_once(path, noise_std=NOISE_STD, seed=ACTUAL_SEED)
+def load_runs(start_state=None):
+    """离线计算 规划线 / 控制线(理想) / 实际轨迹(带噪) — 均为挂车后轴中心轨迹
+
+    start_state 非空时以该位姿为起点重新规划 (空格从拖拽处倒车):
+    依次尝试不同摆直点, 取首个无角点违规的方案; 全部失败时取违规最少者.
+    """
+    if start_state is None:
+        path = plan_path()
+        ideal = run_once(path, noise_std=0.0)
+        actual = run_once(path, noise_std=NOISE_STD, seed=ACTUAL_SEED)
+    else:
+        best = None
+        for gap in REPLAN_JOIN_GAPS:
+            cand_path = plan_path(start_state, join_gap=gap)
+            cand_ideal = run_once(cand_path, noise_std=0.0, start_state=start_state,
+                                  g_des_max_deg=REPLAN_G_DES_MAX_DEG)
+            key = (0 if cand_ideal['success'] else 1, len(cand_ideal['violations']))
+            if best is None or key < best[0]:
+                best = (key, cand_path, cand_ideal)
+            if key == (0, 0):
+                break
+        _, path, ideal = best
+        actual = run_once(path, noise_std=NOISE_STD, seed=ACTUAL_SEED,
+                          start_state=start_state,
+                          g_des_max_deg=REPLAN_G_DES_MAX_DEG)
     return {
         'plan': path[:, :2],
         'control': ideal['tc_states'],
@@ -292,15 +349,15 @@ def point_on_truck(truck, wx, wy):
 
 
 HELP_LINES = (
-    "鼠标左键拖拽车辆 | L 拉直挂车",
-    "空格 暂停/继续 | R 重置",
-    "UP/DOWN 倍速 | ESC 退出",
+    "左键拖拽车辆 | L 拉直挂车",
+    "空格: 暂停/继续; 拖拽后从此处倒车",
+    "R 重置 | UP/DOWN 倍速 | ESC 退出",
 )
 
 
-def draw_help(screen, font_small, view_w, view_h):
+def draw_help(screen, font_small, view_w, view_h, lines=HELP_LINES):
     """右上角常驻快捷键说明 (浅底框, 保证文字不被场景标线干扰)"""
-    surfs = [font_small.render(t, True, (60, 60, 60)) for t in HELP_LINES]
+    surfs = [font_small.render(t, True, (60, 60, 60)) for t in lines]
     pad, lh = 10, 26
     w = max(s.get_width() for s in surfs) + 2 * pad
     h = lh * len(surfs) + 2 * pad
@@ -375,7 +432,7 @@ def render_frame(screen, runs, idx, road, font_small, font_big, override=None, c
     cur_bad = corner_violations(truck.get_corner_positions())
     if manual:
         lines = [
-            "手动位姿: 左键拖拽移动车辆 | L 拉直挂车",
+            "手动位姿: 左键拖拽 | L 拉直 | 空格从此处倒车",
             f"牵引车参考点: ({x:.2f}, {y:.2f}) m",
             f"挂车后轴中心: ({tc_x:.2f}, {tc_y:.2f}) m",
             f"航向: {np.rad2deg(h):+.1f}°   铰接角: {np.rad2deg(g):+.1f}°   "
@@ -399,7 +456,7 @@ def render_frame(screen, runs, idx, road, font_small, font_big, override=None, c
     draw_help(screen, font_small, view_w, view_h)
 
     if manual:
-        surf = font_small.render("手动位姿 (空格继续回放 / R 重置)", True, (70, 90, 170))
+        surf = font_small.render("手动位姿 (空格 从此处倒车 / R 重置)", True, (70, 90, 170))
         screen.blit(surf, (view_w // 2 - surf.get_width() // 2, 120))
     elif done:
         status = "入库成功" if runs['actual']['success'] else "未成功停入"
@@ -447,7 +504,8 @@ def main():
     font_big = load_font(40)
 
     print("正在计算规划与控制轨迹...")
-    runs = load_runs()
+    base_runs = load_runs()
+    runs = base_runs
     total = len(runs['actual']['states'])
     print(f"规划点 {len(runs['plan'])}, 控制线 {len(runs['control'])} 点, "
           f"实际轨迹 {total} 步, 入库成功={runs['actual']['success']}")
@@ -481,16 +539,28 @@ def main():
                 if event.key == pygame.K_ESCAPE:
                     running = False
                 elif event.key == pygame.K_SPACE:
-                    paused = not paused
-                    if not paused:              # 继续回放时退出手动位姿
+                    if override is not None:    # 以拖拽/拉直后的位姿为起点重新倒车
+                        start = list(override)
+                        runs = load_runs(start_state=start)
+                        total = len(runs['actual']['states'])
+                        idx = 0
                         override = None
                         cam_hold = None
                         dragging = False
+                        paused = False
+                        road.set_start_position(start[0], start[1])
+                        print(f"从手动位姿 ({start[0]:.2f}, {start[1]:.2f}) 重新倒车: "
+                              f"{total} 步, 入库成功={runs['actual']['success']}")
+                    else:
+                        paused = not paused
                 elif event.key == pygame.K_r:
+                    runs = base_runs
+                    total = len(runs['actual']['states'])
                     idx = 0
                     override = None
                     cam_hold = None
                     dragging = False
+                    road.set_start_position(START_X, START_Y)
                 elif event.key == pygame.K_l:   # 拉直: 铰接角归零
                     if override is None:
                         override = list(cur_state)
