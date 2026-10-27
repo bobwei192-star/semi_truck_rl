@@ -11,7 +11,8 @@
   .venv/bin/python another_solve/parking_three_lines.py            # 实时可视化
   .venv/bin/python another_solve/parking_three_lines.py --headless # 无头验证 + 保存截图
 
-按键: SPACE 暂停 | R 重置 | UP/DOWN 倍速 | ESC 退出
+按键: SPACE 暂停/继续 | R 重置 | UP/DOWN 倍速 | L 拉直挂车 | ESC 退出
+交互: 鼠标左键拖拽车辆移动位置 (拖拽/拉直后停在当前位姿, 空格继续回放)
 """
 
 import os
@@ -253,20 +254,60 @@ def compute_camera(truck_y, view_w, view_h):
     return cam_x, cam_y
 
 
+def truck_from_state(state):
+    """由 (x, y, h, g, s_deg) 构造车辆对象"""
+    truck = TruckTrailerOnAxle()
+    truck.set_state(state[:4])
+    truck.s_deg = state[4] if len(state) > 4 else 0.0
+    return truck
+
+
+def screen_to_world(pos, cam):
+    """屏幕像素 -> 世界坐标(米); 视图是世界画布的等比例裁剪, 无缩放"""
+    return pos[0] / SCALE + cam[0], pos[1] / SCALE + cam[1]
+
+
+def point_on_truck(truck, wx, wy):
+    """判断世界坐标点是否落在牵引车/挂车矩形内 (拖拽命中检测)"""
+    def in_rect(cx, cy, th, half_len, half_wid):
+        dx, dy = wx - cx, wy - cy
+        c, s = np.cos(th), np.sin(th)
+        lx = dx * c + dy * s
+        ly = -dx * s + dy * c
+        return abs(lx) <= half_len and abs(ly) <= half_wid
+
+    t_len = truck.truckWheelbase + 2 * truck.truckMargin
+    if in_rect(truck.x_m, truck.y_m, truck.h_rad,
+               t_len / 2 + 0.3, truck.truckWidth / 2 + 0.3):
+        return True
+
+    # 挂车矩形中心, 与 draw_truck 保持一致
+    cnx = truck.x_m + (-t_len / 2 + truck.truckMargin) * np.cos(truck.h_rad)
+    cny = truck.y_m + (-t_len / 2 + truck.truckMargin) * np.sin(truck.h_rad)
+    tr_len = truck.trailerWheelbase + truck.trailerMarginFront + truck.trailerMarginBack
+    tr_cx = cnx + (truck.trailerMarginFront - tr_len / 2) * np.cos(truck.h_rad + truck.g_rad)
+    tr_cy = cny + (truck.trailerMarginFront - tr_len / 2) * np.sin(truck.h_rad + truck.g_rad)
+    return in_rect(tr_cx, tr_cy, truck.h_rad + truck.g_rad,
+                   tr_len / 2 + 0.3, truck.trailerWidth / 2 + 0.3)
+
+
 WORLD_W_PX = int(80 * SCALE)    # 世界画布: x 0..80m
 WORLD_H_PX = int(80 * SCALE)    # y 0..80m
 
 
-def render_frame(screen, runs, idx, road, font_small, font_big):
+def render_frame(screen, runs, idx, road, font_small, font_big, override=None, cam=None):
     from render.render_utils import draw_truck, WHITE, GREEN
 
     actual = runs['actual']
     states = actual['states']
     idx = max(0, min(idx, len(states) - 1))
-    x, y, h, g, s_deg = states[idx]
+    if override is not None:
+        x, y, h, g, s_deg = override
+    else:
+        x, y, h, g, s_deg = states[idx]
 
     view_w, view_h = screen.get_size()
-    cam_x, cam_y = compute_camera(y, view_w, view_h)
+    cam_x, cam_y = cam if cam is not None else compute_camera(y, view_w, view_h)
 
     # 世界画布 (像素 = 米 * SCALE, 无相机偏移), 再按视口裁剪贴到屏幕
     world = pygame.Surface((WORLD_W_PX, WORLD_H_PX))
@@ -284,9 +325,7 @@ def render_frame(screen, runs, idx, road, font_small, font_big):
                        int(0.5 * SCALE), 2)
 
     # 车辆
-    truck = TruckTrailerOnAxle()
-    truck.set_state([x, y, h, g])
-    truck.s_deg = s_deg
+    truck = truck_from_state((x, y, h, g, s_deg))
     draw_truck(world, truck, SCALE)
 
     screen.fill((255, 255, 255))
@@ -308,29 +347,45 @@ def render_frame(screen, runs, idx, road, font_small, font_big):
         screen.blit(surf, (66, ly))
 
     # 信息面板
-    tc_x, tc_y = runs['actual']['tc_states'][idx]
-    done = idx >= len(states) - 1
+    manual = override is not None
+    tc_x, tc_y = runs['actual']['controller'].trailer_center(truck)
+    done = (not manual) and idx >= len(states) - 1
     cur_bad = corner_violations(truck.get_corner_positions())
-    status = "入库成功" if (done and runs['actual']['success']) else (
-        "未成功停入" if done else ("约束警告!" if cur_bad else "执行中"))
-    lines = [
-        f"步数: {idx + 1}/{len(states)}",
-        f"挂车后轴中心: ({tc_x:.2f}, {tc_y:.2f}) m",
-        f"航向误差 ψ: {np.rad2deg(runs['actual']['psis'][idx]):+.2f}°   "
-        f"横向误差 e: {runs['actual']['errors'][idx]:+.2f} m",
-        f"铰接角: {np.rad2deg(g):+.1f}°   转向角: {s_deg:+.1f}°",
-        f"约束: {'全部满足' if not cur_bad else f'{len(cur_bad)}个角点越界'}",
-    ]
+    if manual:
+        lines = [
+            "手动位姿: 左键拖拽移动车辆 | L 拉直挂车",
+            f"牵引车参考点: ({x:.2f}, {y:.2f}) m",
+            f"挂车后轴中心: ({tc_x:.2f}, {tc_y:.2f}) m",
+            f"航向: {np.rad2deg(h):+.1f}°   铰接角: {np.rad2deg(g):+.1f}°   "
+            f"转向角: {s_deg:+.1f}°",
+            f"约束: {'全部满足' if not cur_bad else f'{len(cur_bad)}个角点越界'}",
+        ]
+    else:
+        lines = [
+            f"步数: {idx + 1}/{len(states)}",
+            f"挂车后轴中心: ({tc_x:.2f}, {tc_y:.2f}) m",
+            f"航向误差 ψ: {np.rad2deg(runs['actual']['psis'][idx]):+.2f}°   "
+            f"横向误差 e: {runs['actual']['errors'][idx]:+.2f} m",
+            f"铰接角: {np.rad2deg(g):+.1f}°   转向角: {s_deg:+.1f}°",
+            f"约束: {'全部满足' if not cur_bad else f'{len(cur_bad)}个角点越界'}",
+        ]
     for i, text in enumerate(lines):
         surf = font_small.render(text, True, (30, 30, 30))
         screen.blit(surf, (14, view_h - 24 - (len(lines) - 1 - i) * 26))
 
-    if done:
-        msg = status
-        color = (0, 150, 60) if (done and runs['actual']['success']) else (
-            (190, 130, 0) if (done and not cur_bad) else (220, 40, 40))
-        surf = font_big.render(msg, True, color)
-        screen.blit(surf, (view_w // 2 - surf.get_width() // 2, 14))
+    # 操作提示 (右上角)
+    hint = font_small.render("拖拽车辆 | L 拉直 | 空格 回放 | R 重置", True, (130, 130, 130))
+    screen.blit(hint, (view_w - hint.get_width() - 14, 12))
+
+    if manual:
+        surf = font_small.render("手动位姿 (空格继续回放 / R 重置)", True, (70, 90, 170))
+        screen.blit(surf, (view_w // 2 - surf.get_width() // 2, 104))
+    elif done:
+        status = "入库成功" if runs['actual']['success'] else "未成功停入"
+        color = (0, 150, 60) if runs['actual']['success'] else (
+            (190, 130, 0) if not cur_bad else (220, 40, 40))
+        surf = font_big.render(status, True, color)
+        screen.blit(surf, (view_w // 2 - surf.get_width() // 2, 104))
 
 
 def ensure_display():
@@ -386,9 +441,18 @@ def main():
     idx = total - 1 if headless else 0
     speed = 2
     paused = False
+    override = None         # 手动位姿 [x, y, h, g, s_deg]; None = 回放轨迹
+    cam_hold = None         # 手动位姿时冻结相机, 拖拽时画面不跟车跑
+    dragging = False
+    drag_offset = (0.0, 0.0)
     running = True
 
     while running:
+        view_w, view_h = screen.get_size()
+        cur_state = override if override is not None else runs['actual']['states'][idx]
+        cam_now = cam_hold if cam_hold is not None else compute_camera(
+            cur_state[1], view_w, view_h)
+
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
@@ -397,17 +461,51 @@ def main():
                     running = False
                 elif event.key == pygame.K_SPACE:
                     paused = not paused
+                    if not paused:              # 继续回放时退出手动位姿
+                        override = None
+                        cam_hold = None
+                        dragging = False
                 elif event.key == pygame.K_r:
                     idx = 0
+                    override = None
+                    cam_hold = None
+                    dragging = False
+                elif event.key == pygame.K_l:   # 拉直: 铰接角归零
+                    if override is None:
+                        override = list(cur_state)
+                        cam_hold = cam_now
+                    override[3] = 0.0
+                    paused = True
                 elif event.key == pygame.K_UP:
                     speed = min(16, speed * 2)
                 elif event.key == pygame.K_DOWN:
                     speed = max(1, speed // 2)
+            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                disp = override if override is not None else runs['actual']['states'][idx]
+                wx, wy = screen_to_world(event.pos, cam_now)
+                if point_on_truck(truck_from_state(disp), wx, wy):
+                    dragging = True
+                    paused = True
+                    if override is None:
+                        override = list(disp)
+                        cam_hold = cam_now
+                    drag_offset = (override[0] - wx, override[1] - wy)
+            elif event.type == pygame.MOUSEMOTION and dragging:
+                if not event.buttons[0]:
+                    dragging = False
+                else:
+                    wx, wy = screen_to_world(event.pos, cam_hold)
+                    override[0] = wx + drag_offset[0]
+                    override[1] = wy + drag_offset[1]
+            elif event.type == pygame.MOUSEBUTTONUP and event.button == 1 and dragging:
+                # 相机保持冻结: 松手后车辆仍停在鼠标落点, 不跳回画面中央
+                dragging = False
 
-        if not paused and idx < total - 1:
+        if override is None and not paused and idx < total - 1:
             idx = min(idx + speed, total - 1)
 
-        render_frame(screen, runs, idx, road, font_small, font_big)
+        render_frame(screen, runs, idx, road, font_small, font_big,
+                     override=override, cam=cam_hold)
         pygame.display.flip()
 
         if headless:
