@@ -6,7 +6,7 @@
 
 PY := .venv/bin/python
 
-.PHONY: run run-side headless test
+.PHONY: run run-side headless test demo-install demo-backend demo-frontend
 
 run: $(PY)
 	$(PY) another_solve/parking_three_lines.py
@@ -24,3 +24,12 @@ test: $(PY)
 $(PY):
 	python3 -m venv .venv
 	.venv/bin/pip install -q numpy pygame-ce
+
+demo-install:
+	$(PY) -m pip install -r requirements-demo.txt
+
+demo-backend:
+	$(PY) -m demo.server --host 127.0.0.1 --port 8000
+
+demo-frontend:
+	cd hangar_spike && npm run dev

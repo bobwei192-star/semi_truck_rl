@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SEMI / TRAILER — REVERSE HANGAR (SPIKE)</title>
+</head>
+<body>
+  <canvas id="scene"></canvas>
+  <div class="vignette"></div>
+  <div class="scanlines"></div>
+
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark">ST</div>
+      <div class="brand-copy">
+        <b>SEMI / TRAILER</b>
+        <small>REVERSE HANGAR · LIVE 1a</small>
+      </div>
+    </div>
+
+    <div class="top-status">
+      <div class="pill" id="simPill"><i class="dot"></i><span id="simPillText">SIM OFFLINE · FAKE DATA</span></div>
+      <div class="res"><em>CREDITS</em><b>12,480</b></div>
+      <div class="res"><em>TOKENS</em><b>860</b></div>
+      <button class="icon-btn" id="settingsBtn" title="设置">⚙</button>
+    </div>
+  </header>
+
+  <nav class="rail" id="rail">
+    <button class="rail-item active" data-tab="hangar">
+      <svg viewBox="0 0 24 24"><path d="M3 10.5 12 4l9 6.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>
+      <span>机库</span>
+    </button>
+    <button class="rail-item" data-tab="scenes">
+      <svg viewBox="0 0 24 24"><path d="M3 6.5 9 4l6 2.5L21 4v13.5L15 20l-6-2.5L3 20zM9 4v13.5M15 6.5V20"/></svg>
+      <span>场景</span>
+    </button>
+    <button class="rail-item" data-tab="controllers">
+      <svg viewBox="0 0 24 24"><path d="M7 7h10v10H7zM9.5 2.5v4M14.5 2.5v4M9.5 17.5v4M14.5 17.5v4M2.5 9.5h4M2.5 14.5h4M17.5 9.5h4M17.5 14.5h4"/></svg>
+      <span>控制器</span>
+    </button>
+    <button class="rail-item" data-tab="training">
+      <svg viewBox="0 0 24 24"><path d="M4 20V10M9 20V4M14 20v-7M19 20V7"/></svg>
+      <span>训练</span>
+    </button>
+    <button class="rail-item" data-tab="replay">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M10 8.5l6 3.5-6 3.5z"/></svg>
+      <span>回放</span>
+    </button>
+  </nav>
+
+  <aside class="panel">
+    <section class="panel-view active" data-view="hangar">
+      <div class="panel-head">
+        <div><small>VEHICLE</small><h2>半挂车 · 倒车入库</h2></div>
+        <span class="tag">A2</span>
+      </div>
+
+      <div class="panel-block">
+        <div class="block-title">车辆参数 <span>PLATFORM</span></div>
+        <div class="stat"><span>车头轴距</span><b>3.00 <i>m</i></b></div>
+        <div class="stat"><span>挂车轴距</span><b>11.00 <i>m</i></b></div>
+        <div class="stat"><span>最大转向角</span><b>±35.0 <i>°</i></b></div>
+        <div class="stat"><span>倒车速度</span><b>-1.00 <i>m/s</i></b></div>
+        <div class="stat"><span>铰接角上限</span><b>±90.0 <i>°</i></b></div>
+        <div class="stat"><span>场景道路</span><b>X 50–60 <i>m</i></b></div>
+        <div class="stat"><span>库位</span><b>56–60 × 50.5–69 <i>m</i></b></div>
+        <div class="stat"><span>起点 / 目标</span><b>(56.25, 9.91) / (58.25, 53.56)</b></div>
+        <p class="panel-note">铰接角物理上限 ±90°；防折叠告警阈值 85°。目标为牵引车参考点（铰点）位置。</p>
+      </div>
+
+      <div class="panel-block">
+        <div class="block-title">控制器 <span>CONTROLLER</span></div>
+        <div class="controller-list" id="controllerList">
+          <button class="controller active" data-controller="Cascade · Tail-in">
+            <span class="c-name">Cascade · Tail-in</span><span class="c-note">串级 · 真实数据</span>
+          </button>
+          <button class="controller" data-controller="MPC · Paper" disabled>
+            <span class="c-name">MPC · Paper</span><span class="c-note">1b · 未接入</span>
+          </button>
+          <button class="controller" data-controller="RL · DDPG+HER" disabled>
+            <span class="c-name">RL · DDPG + HER</span><span class="c-note">未接入</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="panel-block">
+        <div class="block-title">实时状态 <span>LIVE</span></div>
+        <div class="readout-grid">
+          <div class="readout"><em>铰接角</em><b><span id="artAngle">0.0</span><i>°</i></b></div>
+          <div class="readout"><em>方向盘</em><b><span id="steerAngle">0.0</span><i>°</i></b></div>
+          <div class="readout"><em>车速</em><b><span id="speed">0.0</span><i>m/s</i></b></div>
+          <div class="readout"><em>进度</em><b><span id="progressPct">0</span><i>%</i></b></div>
+          <div class="readout"><em>横向误差 e</em><b><span id="latError">—</span><i>m</i></b></div>
+          <div class="readout"><em>航向误差 ψ</em><b><span id="psiError">—</span><i>°</i></b></div>
+        </div>
+        <div class="progress"><span id="progressBar"></span></div>
+        <div class="state-line"><span class="led" id="stateLed"></span><span id="stateText">待命 · STANDBY</span></div>
+        <div class="done-summary" id="doneSummary"></div>
+      </div>
+    </section>
+
+    <section class="panel-view" data-view="scenes">
+      <div class="panel-head"><div><small>SCENARIO</small><h2>场景库</h2></div></div>
+      <div class="list-row active"><span>01 · 倒车入库</span><b>REVERSE DOCK</b></div>
+      <div class="list-row"><span>02 · 侧方位入库</span><b>PARALLEL</b></div>
+      <div class="list-row"><span>03 · S 弯倒车</span><b>S-CURVE</b></div>
+      <div class="list-row"><span>04 · 窄路会车</span><b>NARROW</b></div>
+      <p class="panel-note">当前仅 01 已接入真实数据；其它场景占位。</p>
+    </section>
+
+    <section class="panel-view" data-view="controllers">
+      <div class="panel-head"><div><small>CONTROLLER</small><h2>控制器对比</h2></div></div>
+      <div class="list-row active"><span>Cascade · Tail-in</span><b>REAL · 1a</b></div>
+      <div class="list-row"><span>MPC · Paper</span><b>MODEL · 1b 未接入</b></div>
+      <div class="list-row"><span>RL · DDPG + HER</span><b>LEARNED · 1b</b></div>
+      <div class="list-row"><span>Hybrid A*</span><b>PLANNER · 1b</b></div>
+      <p class="panel-note">当前仅接入 Cascade · tail-in（后端实时串级控制轨迹）；?demo=1 为前端假数据；MPC/RL 待 1b。</p>
+    </section>
+
+    <section class="panel-view" data-view="training">
+      <div class="panel-head"><div><small>TRAINING</small><h2>训练监控</h2></div></div>
+      <div class="empty">TensorBoard 曲线的入口位。<br />spike 未接入。</div>
+    </section>
+
+    <section class="panel-view" data-view="replay">
+      <div class="panel-head"><div><small>REPLAY</small><h2>回放</h2></div></div>
+      <div class="empty">成功/失败回合回放列表的入口位。<br />spike 未接入。</div>
+    </section>
+  </aside>
+
+  <div class="minimap-wrap">
+    <div class="minimap-head"><span>战术地图</span><b id="mmStatus">STANDBY</b></div>
+    <canvas id="minimap" width="240" height="240"></canvas>
+  </div>
+
+  <footer class="bottombar">
+    <div class="scenarios" id="scenarioList">
+      <button class="scenario active" data-scene="倒车入库"><b>倒车入库</b><small>REVERSE DOCK</small></button>
+      <button class="scenario" data-scene="侧方位入库" disabled><b>侧方位入库</b><small>PARALLEL</small></button>
+      <button class="scenario" data-scene="S 弯倒车" disabled><b>S 弯倒车</b><small>S-CURVE</small></button>
+      <button class="scenario" data-scene="窄路会车" disabled><b>窄路会车</b><small>NARROW</small></button>
+    </div>
+    <div class="actions">
+      <button class="btn ghost" id="resetBtn">重置</button>
+      <button class="btn primary" id="startBtn">开始演示 <span>▶</span></button>
+    </div>
+  </footer>
+
+  <div class="toast" id="toast"></div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
