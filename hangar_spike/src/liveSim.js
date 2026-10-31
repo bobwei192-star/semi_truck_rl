@@ -88,6 +88,8 @@ export class LiveSim {
         break;
       case 'done':
         this._doneInfo = msg;
+        this._phase = msg.success ? 'done' : 'failed';
+        this._onPhase(this._phase);
         break;
       case 'error':
         this._onToast(`后端错误: ${msg.message}`);
