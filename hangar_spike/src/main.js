@@ -14,10 +14,31 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { buildTruck } from './truck.js';
 import { FakeParkingSim, SCENE_ORIGIN } from './fakeSim.js';
 import { SCENE } from './sceneConfig.js';
+import { LiveSim } from './liveSim.js';
 import { createAudioEngine } from './audio.js';
 
 const audio = createAudioEngine();
 if (import.meta.env.DEV) window.__audio = audio;
+
+/* ---------------- sim mode ---------------- */
+
+const params = new URLSearchParams(location.search);
+const useFake = params.get('demo') === '1';
+const wsOverride = params.get('ws');
+const wsUrl = wsOverride
+  || `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`;
+
+let sim;
+if (useFake) {
+  sim = new FakeParkingSim();
+} else {
+  sim = new LiveSim({
+    url: wsUrl,
+    onPhase: handleSimPhase,
+    onToast: toast,
+  });
+  // 初始摆位在 Step 4 (buildTruck 之后) 完成
+}
 
 /* ---------------- renderer / scene ---------------- */
 
@@ -170,18 +191,22 @@ function line(points, color, opacity = 1, dashed = false) {
   return l;
 }
 
-line([toScene(48, -12), toScene(48, 72)], 0xd8dde2, 0.55);
-line([toScene(64, -12), toScene(64, 72)], 0xd8dde2, 0.55);
-line([toScene(56, -12), toScene(56, 72)], 0xd8dde2, 0.3, true);
+line([toScene(SCENE.road.left, SCENE.road.yStart), toScene(SCENE.road.left, SCENE.road.yEnd)], 0xd8dde2, 0.55);
+line([toScene(SCENE.road.right, SCENE.road.yStart), toScene(SCENE.road.right, SCENE.road.yEnd)], 0xd8dde2, 0.55);
+line([toScene(SCENE.road.center, SCENE.road.yStart), toScene(SCENE.road.center, SCENE.road.yEnd)], 0xd8dde2, 0.3, true);
 
-// target dock: x [56, 64], y [47.5, 66]
+// target dock: SCENE.slot
 const slot = [
-  toScene(56.2, 47.7), toScene(63.8, 47.7), toScene(63.8, 65.8),
-  toScene(56.2, 65.8), toScene(56.2, 47.7),
+  toScene(SCENE.slot.left, SCENE.slot.top), toScene(SCENE.slot.right, SCENE.slot.top),
+  toScene(SCENE.slot.right, SCENE.slot.bottom), toScene(SCENE.slot.left, SCENE.slot.bottom),
+  toScene(SCENE.slot.left, SCENE.slot.top),
 ];
 line(slot, 0xe39a2d, 0.95);
 
-for (const [x, y] of [[56.2, 47.7], [63.8, 47.7], [63.8, 65.8], [56.2, 65.8]]) {
+for (const [x, y] of [
+  [SCENE.slot.left, SCENE.slot.top], [SCENE.slot.right, SCENE.slot.top],
+  [SCENE.slot.right, SCENE.slot.bottom], [SCENE.slot.left, SCENE.slot.bottom],
+]) {
   const c = toScene(x, y);
   line([new THREE.Vector3(c.x - 0.9, 0.04, c.z), new THREE.Vector3(c.x + 0.9, 0.04, c.z)], 0xf7c766, 1);
   line([new THREE.Vector3(c.x, 0.04, c.z - 0.9), new THREE.Vector3(c.x, 0.04, c.z + 0.9)], 0xf7c766, 1);
@@ -209,7 +234,12 @@ function floorLabel(text, x, y, w = 5, h = 2.5) {
   scene.add(m);
 }
 
-floorLabel('DOCK 01', 60, 44.2, 4.6, 2.3);
+floorLabel(
+  'DOCK 01',
+  (SCENE.slot.left + SCENE.slot.right) / 2,
+  Math.min(SCENE.slot.top, SCENE.slot.bottom) - 3.5,
+  4.6, 2.3
+);
 
 // start pad
 const pad = new THREE.Mesh(
@@ -224,7 +254,11 @@ scene.add(pad);
 
 const truck = buildTruck();
 scene.add(truck.group);
-truck.setState(new FakeParkingSim().state);
+if (useFake) {
+  truck.setState(sim.state);
+} else {
+  truck.setState({ ...SCENE.start, steer: 0, speed: 0 }, 0);
+}
 
 /* ---------------- post processing ---------------- */
 
@@ -235,9 +269,6 @@ composer.addPass(bloom);
 composer.addPass(new OutputPass());
 
 /* ---------------- UI ---------------- */
-
-const sim = new FakeParkingSim();
-truck.setState(sim.state);
 
 const el = {
   artAngle: document.getElementById('artAngle'),
@@ -254,6 +285,9 @@ const el = {
   toast: document.getElementById('toast'),
   mmStatus: document.getElementById('mmStatus'),
   controllerList: document.getElementById('controllerList'),
+  latError: document.getElementById('latError'),
+  psiError: document.getElementById('psiError'),
+  doneSummary: document.getElementById('doneSummary'),
 };
 
 let phase = 'idle';
@@ -275,10 +309,12 @@ function setButtonLabel(text, glyph) {
 
 function setPhase(next) {
   phase = next;
+  const live = !useFake;
+  const label = live ? 'LIVE · CASCADE' : 'FAKE DATA';
   if (phase === 'running') {
     el.simPill.classList.add('live');
-    el.simPill.classList.remove('done');
-    el.simPillText.textContent = 'DEMO RUNNING · FAKE DATA';
+    el.simPill.classList.remove('done', 'paused', 'offline');
+    el.simPillText.textContent = `RUNNING · ${label}`;
     el.startBtn.disabled = true;
     el.startBtn.classList.add('running');
     setButtonLabel('演示中… ', '■');
@@ -288,45 +324,109 @@ function setPhase(next) {
   } else if (phase === 'done') {
     el.simPill.classList.remove('live');
     el.simPill.classList.add('done');
-    el.simPillText.textContent = 'DOCKED · FAKE DATA';
+    el.simPill.classList.remove('paused', 'offline');
+    el.simPillText.textContent = `DOCKED · ${label}`;
     el.startBtn.disabled = false;
     el.startBtn.classList.remove('running');
     setButtonLabel('再次演示 ', '▶');
     el.mmStatus.textContent = 'DOCKED';
     el.stateLed.className = 'led ok';
     el.stateText.textContent = '已入库 · DOCKED';
-  } else {
-    el.simPill.classList.remove('live', 'done');
-    el.simPillText.textContent = 'SIM OFFLINE · FAKE DATA';
+  } else if (phase === 'paused') {
+    el.simPill.classList.remove('live', 'done', 'offline');
+    el.simPill.classList.add('paused');
+    el.simPillText.textContent = `PAUSED · ${label}`;
     el.startBtn.disabled = false;
+    el.startBtn.classList.remove('running');
+    setButtonLabel('继续 ', '▶');
+    el.mmStatus.textContent = 'PAUSED';
+    el.stateLed.className = 'led';
+    el.stateText.textContent = '已暂停 · PAUSED';
+  } else if (phase === 'failed') {
+    el.simPill.classList.remove('live', 'done', 'paused', 'offline');
+    el.simPillText.textContent = `FAILED · ${label}`;
+    el.startBtn.disabled = false;
+    el.startBtn.classList.remove('running');
+    setButtonLabel('重新开始 ', '▶');
+    el.mmStatus.textContent = 'FAILED';
+    el.stateLed.className = 'led';
+    el.stateText.textContent = '入库失败 · FAILED';
+  } else if (phase === 'offline') {
+    el.simPill.classList.remove('live', 'done', 'paused');
+    el.simPill.classList.add('offline');
+    el.simPillText.textContent = 'RECONNECTING · CASCADE';
+    el.startBtn.disabled = true;
+    el.startBtn.classList.remove('running');
+    setButtonLabel('等待后端… ', '▶');
+    el.mmStatus.textContent = 'OFFLINE';
+    el.stateText.textContent = '后端未连接';
+  } else {  // ready / idle
+    el.simPill.classList.remove('live', 'done', 'paused', 'offline');
+    el.simPillText.textContent = live ? `STANDBY · ${label}` : `SIM OFFLINE · ${label}`;
+    el.startBtn.disabled = live && !sim.connected;
     el.startBtn.classList.remove('running');
     setButtonLabel('开始演示 ', '▶');
     el.mmStatus.textContent = 'STANDBY';
     el.stateLed.className = 'led';
     el.stateText.textContent = '待命 · STANDBY';
+    if (live) el.stateText.textContent = '待命 · 等待开始';
+  }
+}
+
+function handleSimPhase(phase) {
+  setPhase(phase);
+  if (phase === 'ready' || phase === 'offline') {
+    el.doneSummary.textContent = '';
+    el.doneSummary.className = 'done-summary';
+  }
+  if (phase === 'done' && sim.doneInfo) {
+    const d = sim.doneInfo;
+    el.doneSummary.className = 'done-summary ok';
+    el.doneSummary.textContent =
+      `入库成功 · ${d.steps} 步 · ${d.simTime.toFixed(1)} s · ` +
+      `违规 ${d.violationSteps} · 最大横向误差 ${d.maxLateralError.toFixed(2)} m`;
+    toast('入库成功 · 真实串级控制轨迹');
+  } else if (phase === 'failed' && sim.doneInfo) {
+    const d = sim.doneInfo;
+    el.doneSummary.className = 'done-summary bad';
+    el.doneSummary.textContent =
+      `入库失败 · ${d.steps} 步 · 违规 ${d.violationSteps} 步`;
+    toast('入库失败 · 详见汇总');
+  } else if (phase === 'offline') {
+    toast('后端未连接；离线可加 ?demo=1 看假数据');
   }
 }
 
 function startDemo() {
-  if (sim.running) return;
-  if (sim.done) sim.reset();
+  if (useFake) {
+    if (sim.running) return;
+    if (sim.done) sim.reset();
+  } else if (!sim.connected || sim.running) {
+    return;
+  }
   audio.unlock();
   sim.start();
   follow = true;
   controls.autoRotate = false;
-  setPhase('running');
-  toast('假数据演示开始 · 轨迹由前端生成');
+  if (useFake) {
+    setPhase('running');
+    toast('假数据演示开始 · 轨迹由前端生成');
+  }
 }
 
 function resetDemo() {
   sim.reset();
-  truck.setState(sim.state);
-  follow = false;
-  controls.autoRotate = true;
-  camera.position.copy(HOME_CAM);
-  controls.target.copy(HOME_TARGET);
-  controls.update();
-  setPhase('idle');
+  if (useFake) {
+    truck.setState(sim.state);
+    follow = false;
+    controls.autoRotate = true;
+    camera.position.copy(HOME_CAM);
+    controls.target.copy(HOME_TARGET);
+    controls.update();
+    setPhase('idle');
+  }
+  el.doneSummary.textContent = '';
+  el.doneSummary.className = 'done-summary';
   toast('已重置');
 }
 
@@ -337,8 +437,12 @@ document.getElementById('settingsBtn').addEventListener('click', () => toast('�
 window.addEventListener('keydown', (e) => {
   if (e.code === 'Space') {
     e.preventDefault();
-    if (phase === 'running') resetDemo();
-    else startDemo();
+    if (useFake) {
+      if (phase === 'running') resetDemo();   // fake 保持原语义
+      else startDemo();
+    } else if (phase === 'running') sim.pause();
+    else if (phase === 'paused') sim.resume();
+    else if (phase === 'ready' || phase === 'done' || phase === 'failed') startDemo();
   } else if (e.key === 'r' || e.key === 'R') {
     resetDemo();
   } else if (e.key === 'm' || e.key === 'M') {
@@ -356,20 +460,11 @@ document.querySelectorAll('.rail-item').forEach((btn) => {
   });
 });
 
-document.querySelectorAll('.controller').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.controller').forEach((b) => b.classList.remove('active'));
-    btn.classList.add('active');
-    toast(`控制器：${btn.dataset.controller}（spike 不改变轨迹）`);
-  });
+document.querySelectorAll('.controller:not(:disabled)').forEach((btn) => {
+  btn.addEventListener('click', () => toast('1a 仅接入 Cascade · tail-in 真实数据'));
 });
-
-document.querySelectorAll('.scenario').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.scenario').forEach((b) => b.classList.remove('active'));
-    btn.classList.add('active');
-    toast(`场景：${btn.dataset.scene}（spike 演示路径固定）`);
-  });
+document.querySelectorAll('.scenario:not(:disabled)').forEach((btn) => {
+  btn.addEventListener('click', () => toast('场景：倒车入库'));
 });
 
 /* ---------------- HUD / minimap ---------------- */
@@ -381,15 +476,33 @@ function updateHud(state, dt) {
   if (hudTimer < 0.08) return;
   hudTimer = 0;
 
+  const live = !useFake && sim.latestState;
+  if (live) {
+    const p = sim.latestState.pose;
+    el.artAngle.textContent = THREE.MathUtils.radToDeg(p.g).toFixed(1);
+    el.steerAngle.textContent = THREE.MathUtils.radToDeg(p.steer).toFixed(1);
+    el.speed.textContent = p.speed.toFixed(1);
+    const pct = Math.round(sim.latestState.progress * 100);
+    el.progressPct.textContent = pct;
+    el.progressBar.style.width = `${pct}%`;
+    el.latError.textContent = sim.latestState.error.lateral.toFixed(2);
+    el.psiError.textContent = THREE.MathUtils.radToDeg(sim.latestState.error.psi).toFixed(1);
+    return;
+  }
+
   el.artAngle.textContent = THREE.MathUtils.radToDeg(state.g).toFixed(1);
   el.steerAngle.textContent = THREE.MathUtils.radToDeg(state.steer).toFixed(1);
   el.speed.textContent = state.speed.toFixed(1);
   const pct = Math.round(state.progress * 100);
   el.progressPct.textContent = pct;
   el.progressBar.style.width = `${pct}%`;
+  el.latError.textContent = '—';
+  el.psiError.textContent = '—';
 
   if (phase === 'running' && sim.done) {
     setPhase('done');
+    el.doneSummary.className = 'done-summary ok';
+    el.doneSummary.textContent = '假数据演示完成 · 轨迹由前端生成';
     toast('演示完成 · 假数据轨迹');
   }
 }
@@ -448,6 +561,15 @@ function drawVehicle(state, elapsed) {
   ctx.beginPath();
   ctx.arc(targetX, targetY, pulse, 0, Math.PI * 2);
   ctx.stroke();
+
+  const cgX = mmX(SCENE.controlGoal.x);
+  const cgY = mmY(SCENE.controlGoal.y);
+  ctx.strokeStyle = 'rgba(127,180,201,0.7)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(cgX, cgY - 4); ctx.lineTo(cgX + 4, cgY);
+  ctx.lineTo(cgX, cgY + 4); ctx.lineTo(cgX - 4, cgY);
+  ctx.closePath(); ctx.stroke();
 }
 
 function drawMinimap(state, elapsed) {
@@ -583,8 +705,6 @@ function frame(timestamp) {
   composer.render();
 }
 
-const params = new URLSearchParams(window.location.search);
-
 function applyPose(p) {
   const state = sim.seek(p);
   truck.setState(state, 0);
@@ -598,12 +718,13 @@ function applyPose(p) {
   updateHud(state, 1);
 }
 
-setPhase('idle');
-if (params.has('pose')) {
+if (useFake && params.has('pose')) {
   applyPose(THREE.MathUtils.clamp(Number(params.get('pose')) || 0, 0, 1));
+} else {
+  setPhase(useFake ? 'idle' : 'offline');
 }
 frame();
 
-if (params.has('demo')) {
-  setTimeout(startDemo, 700);
+if (useFake) {
+  setTimeout(startDemo, 700);   // fake 自动开始 (spec §10.4.1)
 }
