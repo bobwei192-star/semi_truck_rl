@@ -314,7 +314,7 @@ function setPhase(next) {
   if (phase === 'running') {
     el.simPill.classList.add('live');
     el.simPill.classList.remove('done', 'paused', 'offline');
-    el.simPillText.textContent = `RUNNING · ${label}`;
+    el.simPillText.textContent = live ? `RUNNING · ${label}` : 'DEMO RUNNING · FAKE DATA';
     el.startBtn.disabled = true;
     el.startBtn.classList.add('running');
     setButtonLabel('演示中… ', '■');
@@ -401,8 +401,9 @@ function startDemo() {
   if (useFake) {
     if (sim.running) return;
     if (sim.done) sim.reset();
-  } else if (!sim.connected || sim.running) {
-    return;
+  } else {
+    if (!sim.connected || sim.running) return;
+    if (phase === 'done' || phase === 'failed') sim.reset();
   }
   audio.unlock();
   sim.start();
