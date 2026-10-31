@@ -28,6 +28,7 @@ def create_app(speed=1.0, seed=ACTUAL_SEED, noise=NOISE_STD):
     session = ReverseDockSession(seed=seed, noise_std=noise)
     clients = set()
     state = {'speed': speed}
+    step_lock = asyncio.Lock()   # 串行化 step+broadcast 与命令处理, 单操作员 (spec §9.2)
 
     async def broadcast(msg):
         dead = []
@@ -53,20 +54,23 @@ def create_app(speed=1.0, seed=ACTUAL_SEED, noise=NOISE_STD):
             if session.phase == 'running':
                 while accum >= interval:
                     accum -= interval
-                    try:
-                        msg = session.step()
-                    except Exception as exc:           # 单步异常: 回 error, phase=failed
-                        log.exception('step failed')
-                        session._success = False
-                        session._phase = 'failed'
-                        await broadcast({'type': 'error', 'protocol': PROTOCOL,
-                                         'code': 'internal', 'message': str(exc)})
-                        msg = session.state_message()
-                    if msg is not None:
-                        await broadcast(msg)
-                    if session.phase in ('done', 'failed'):
-                        await broadcast(session.done_message())
-                        break
+                    async with step_lock:
+                        if session.phase != 'running':   # 等锁期间被 pause/reset
+                            break
+                        try:
+                            msg = session.step()
+                        except Exception as exc:           # 单步异常: 回 error, phase=failed
+                            log.exception('step failed')
+                            session._success = False
+                            session._phase = 'failed'
+                            await broadcast({'type': 'error', 'protocol': PROTOCOL,
+                                             'code': 'internal', 'message': str(exc)})
+                            msg = session.state_message()
+                        if msg is not None:
+                            await broadcast(msg)
+                        if session.phase in ('done', 'failed'):
+                            await broadcast(session.done_message())
+                            break
             else:
                 accum = min(accum, interval)
 
@@ -108,12 +112,17 @@ def create_app(speed=1.0, seed=ACTUAL_SEED, noise=NOISE_STD):
                     await ws.send_json({'type': 'pong', 'protocol': PROTOCOL,
                                         't': msg.get('t')})
                 elif cmd == 'start':
-                    session.start()
-                    # 不回显 state: 权威测试要求首个 running state seq>=1,
-                    # ticker 在 DT/speed (<=50ms) 内广播 step 后的 state (spec §8.7 只显式要求 reset 立即发 state)
+                    async with step_lock:
+                        was_terminal = session.phase in ('done', 'failed')
+                        session.start()
+                        # 终态重启会把 seq 归零; 回显 seq=0 让客户端解除旧的 seq 过滤。
+                        # ready/paused → running 仍不回显 (权威冒烟测试要求首个 running state seq>=1)。
+                        if was_terminal:
+                            await ws.send_json(session.state_message())
                 elif cmd in ('pause', 'resume', 'reset'):
-                    getattr(session, cmd)()
-                    await ws.send_json(session.state_message())
+                    async with step_lock:
+                        getattr(session, cmd)()
+                        await ws.send_json(session.state_message())
                 else:
                     await ws.send_json({'type': 'error', 'protocol': PROTOCOL,
                                         'code': 'bad_command',

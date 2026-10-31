@@ -112,10 +112,11 @@
 
     <section class="panel-view" data-view="controllers">
       <div class="panel-head"><div><small>CONTROLLER</small><h2>控制器对比</h2></div></div>
-      <div class="list-row"><span>RL · DDPG + HER</span><b>LEARNED</b></div>
-      <div class="list-row active"><span>MPC · Paper</span><b>MODEL · 1b</b></div>
-      <div class="list-row"><span>Hybrid A*</span><b>PLANNER</b></div>
-      <p class="panel-note">右侧参数真实取自仓库文档；演示轨迹为前端假数据。</p>
+      <div class="list-row active"><span>Cascade · Tail-in</span><b>REAL · 1a</b></div>
+      <div class="list-row"><span>MPC · Paper</span><b>MODEL · 1b 未接入</b></div>
+      <div class="list-row"><span>RL · DDPG + HER</span><b>LEARNED · 1b</b></div>
+      <div class="list-row"><span>Hybrid A*</span><b>PLANNER · 1b</b></div>
+      <p class="panel-note">当前仅接入 Cascade · tail-in（后端实时串级控制轨迹）；?demo=1 为前端假数据；MPC/RL 待 1b。</p>
     </section>
 
     <section class="panel-view" data-view="training">
