@@ -140,6 +140,8 @@ class ReverseDockSession:
             'phase': self._phase,
             'done': self._phase in ('done', 'failed'),
             'success': self._success,
+            # 顶层 speed 镜像 pose.speed (spec §8.4 语义一致), 冒烟测试按顶层键断言
+            'speed': V_REVERSE if self._phase == 'running' else 0.0,
             'pose': {
                 'x': float(self._truck.x_m), 'y': float(self._truck.y_m),
                 'h': float(self._truck.h_rad), 'g': float(self._truck.g_rad),
