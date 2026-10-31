@@ -223,3 +223,6 @@ venv
 logs/
 *.zip
 rl_ckpt/
+
+# JS deps
+node_modules/
